@@ -5,7 +5,7 @@ from pypdf import PdfReader
 from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter, python
 
 st.set_page_config(page_title="College Knowledge Assistant", page_icon="🎓", layout="wide")
 st.title("🎓 College Knowledge Assistant")
@@ -87,9 +87,61 @@ def detect_conflicts(docs):
     return conflicts
 
 
+
 st.subheader("1. Upload official documents")
+
 uploads = st.file_uploader(
     "Select at least five PDF or TXT files",
     type=["pdf", "txt"],
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    key="uploaded_documents"
 )
+
+if uploads:
+    st.success(f"{len(uploads)} files selected.")
+
+process_button = st.button(
+    "📂 Process Documents",
+    type="primary",
+    use_container_width=False
+)
+
+if process_button:
+    if not uploads or len(uploads) < 5:
+        st.error("Please upload at least five PDF or TXT files.")
+    else:
+        with st.spinner("Processing documents..."):
+            docs, errors = read_uploads(uploads)
+
+            for error in errors:
+                st.warning(error)
+
+            if not docs:
+                st.error("No readable text was found.")
+            else:
+                splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap
+                )
+
+                chunks = splitter.split_documents(docs)
+
+                try:
+                    db = FAISS.from_documents(
+                        chunks,
+                        get_embeddings()
+                    )
+
+                    st.session_state["db"] = db
+                    st.session_state["chunks"] = chunks
+                    st.session_state["files"] = [
+                        file.name for file in uploads
+                    ]
+                    st.session_state["conflicts"] = detect_conflicts(chunks)
+
+                    st.success("Documents processed successfully!")
+                    st.rerun()
+
+                except Exception as error:
+                    st.error(f"Processing failed: {error}")
+
